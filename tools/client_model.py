@@ -1,7 +1,7 @@
 import re
 from enum import Enum
 
-HARD_CODED_START_DATE = '5/22/2020'
+HARD_CODED_START_DATE = '5/25/2020'
 
 class MealTime(Enum):
     BREAKFAST = 'Breakfast'
@@ -24,6 +24,9 @@ def map_to_cuisine(description, is_special):
 
 def map_to_checkbox(desc):
     return 'yes' if 'TRUE' in desc.upper() else 'no'
+
+def map_to_int(desc):
+    return 1 if desc == 'yes' else 0
 
 class ClientModel:
     keys = [
@@ -81,7 +84,6 @@ class ClientModel:
         'Requested Dietary Restrictions',
         'Requested Cuisine',
         'Assigned Cuisine',
-        'Neighborhood',
         'Requested Meals Per Day',
         'Breakfast',
         'Lunch',
@@ -104,19 +106,19 @@ class ClientModel:
         self.zip_code = old_csv_row['Zip Code'].strip()
         self.requested_dietary_restrictions = old_csv_row['Dietary Restrictions']
         self.requested_cuisine = old_csv_row['Cuisine Preferences']
-        self.assigned_cuisine = map_to_cuisine(self.requested_cuisine, len(old_csv_row['choices for 5/22'].strip()) > 0)
-        self.neighborhood = old_csv_row['Neighborhood']
-        self.requested_meals_per_day = int(old_csv_row['Requested Meals Per Day'])
+        self.assigned_cuisine = map_to_cuisine(self.requested_cuisine, len(old_csv_row.get('choices for 5/22', '').strip()) > 0)
         self.breakfast = map_to_checkbox(old_csv_row['Breakfast'])
         self.lunch = map_to_checkbox(old_csv_row['Lunch'])
         self.dinner = map_to_checkbox(old_csv_row['Dinner'])
+        self.requested_meals_per_day = map_to_int(self.breakfast) + map_to_int(self.lunch) + map_to_int(self.dinner)
         self.household_size = int(old_csv_row['Household Size'] or 1)
         self.phone_number = int(re.sub('[^0-9]','', old_csv_row['Phone #']))
         self.language = old_csv_row['Language']
         self.access_to_fridge = map_to_checkbox(old_csv_row['Access to Fridge'])
         self.access_to_microwave = map_to_checkbox(old_csv_row['Access to Microwave'])
         self.delivery_instructions = old_csv_row['Delivery Instructions']
-        self.notes = str(old_csv_row['Notes'] or 'None')
+        self.notes = old_csv_row.get('Notes', 'None') or 'None'
+        self.active = 'yes'
 
     def to_csv_dict_row(self):
         return {
@@ -129,7 +131,6 @@ class ClientModel:
             'Requested Dietary Restrictions': self.requested_dietary_restrictions,
             'Requested Cuisine': self.requested_cuisine,
             'Assigned Cuisine': self.assigned_cuisine.value,
-            'Neighborhood': self.neighborhood,
             'Requested Meals Per Day': self.requested_meals_per_day,
             'Breakfast': self.breakfast,
             'Lunch': self.lunch,
@@ -153,7 +154,6 @@ class ClientModel:
             self.requested_dietary_restrictions,
             self.requested_cuisine,
             self.assigned_cuisine.value,
-            self.neighborhood,
             self.requested_meals_per_day,
             self.breakfast,
             self.lunch,
@@ -176,7 +176,6 @@ class ClientModel:
             self.requested_dietary_restrictions,
             self.requested_cuisine,
             self.assigned_cuisine.value,
-            self.neighborhood,
             self.requested_meals_per_day,
             self.breakfast,
             self.lunch,
