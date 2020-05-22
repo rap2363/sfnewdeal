@@ -1,0 +1,5 @@
+# Python Stuff
+__pycache__
+
+# Ignore any on-disk databases that were created
+*.db
