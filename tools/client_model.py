@@ -91,6 +91,7 @@ class ClientModel:
         'Language',
         'Access to Fridge',
         'Access to Microwave',
+        'Delivery Instructions',
         'Call Center Notes'
     ]
 
@@ -114,6 +115,7 @@ class ClientModel:
         self.language = old_csv_row['Language']
         self.access_to_fridge = map_to_checkbox(old_csv_row['Access to Fridge'])
         self.access_to_microwave = map_to_checkbox(old_csv_row['Access to Microwave'])
+        self.delivery_instructions = old_csv_row['Delivery Instructions']
         self.notes = str(old_csv_row['Notes'] or 'None')
 
     def to_csv_dict_row(self):
@@ -137,6 +139,7 @@ class ClientModel:
             'Language': self.language,
             'Access to Fridge': self.access_to_fridge,
             'Access to Microwave': self.access_to_microwave,
+            'Delivery Instructions': self.delivery_instructions,
             'Call Center Notes': self.notes
         }
 
