@@ -2,7 +2,6 @@ import csv
 import json
 import os
 import requests
-import time
 
 AIR_TABLE_API_KEY = os.environ['AIR_TABLE_API_KEY']
 GOOGLE_MAPS_API_KEY = os.environ['GOOGLE_MAPS_API_KEY']

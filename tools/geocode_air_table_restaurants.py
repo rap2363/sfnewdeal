@@ -2,7 +2,6 @@ import csv
 import json
 import os
 import requests
-import time
 import utils
 
 AIR_TABLE_API_KEY = os.environ['AIR_TABLE_API_KEY']
