@@ -13,6 +13,8 @@ class Cuisine(Enum):
     CHINESE = 'Chinese'
     AMERICAN_SPECIAL_DIET = 'American Special Diet'
     CHINESE_SPECIAL_DIET = 'Chinese Special Diet'
+    LATIN = 'Latin'
+    LATIN_SPECIAL_DIET = 'Latin Special Diet'
     NO_PREFERENCE = 'No Preference'
 
 def map_to_cuisine(description, is_special):
