@@ -26,6 +26,7 @@ if (dayOfWeekInput in DAY_OF_WEEK_RESTAURANT_MAP) {
     const clientsTable = base.getTable('SF New Deal Clients');
     const restaurantsTable = base.getTable('Great Plates Restaurants');
     const assignmentsTable = base.getTable('Latest Assignments');
+    const unassignableClientsTable = base.getTable('Unassignable Clients');
     let clientsGroupedByZipCodeAndCuisine = {};
 
     const clients = (await clientsTable.selectRecordsAsync()).records
@@ -36,8 +37,9 @@ if (dayOfWeekInput in DAY_OF_WEEK_RESTAURANT_MAP) {
             lng: client.getCellValue('Longitude'),
             id: client.getCellValue('Great Plates ID'),
             streetAddress: client.getCellValue('Street Address'),
-            cuisine: mapClientCuisine(client.getCellValue('Assigned Cuisine').name),
-            zipCode: client.getCellValue('Zip code')
+            cuisine: client.getCellValue('Assigned Cuisine').name,
+            zipCode: client.getCellValue('Zip code'),
+            originalRow: client
         }));
 
     const restaurants = (await restaurantsTable.selectRecordsAsync()).records
@@ -77,24 +79,37 @@ if (dayOfWeekInput in DAY_OF_WEEK_RESTAURANT_MAP) {
         } else if (a.clients.length > b.clients.length) {
             return -1;
         }
-
         return 0;
     });
+    // let sortedZipCodeCuisineGroups = Array.prototype.slice.call(Object.values(clientsGroupedByZipCodeAndCuisine)).sort((a, b) => {
+    //     if ((!noPreference(a.cuisine) && !noPreference(b.cuisine)) || (noPreference(a.cuisine) && noPreference(b.cuisine))) {
+    //         if (a.clients.length < b.clients.length) {
+    //             return 1;
+    //         } else if (a.clients.length > b.clients.length) {
+    //             return -1;
+    //         }
+    //     } else if (!noPreference(a.cuisine) && noPreference(b.cuisine)) {
+    //         return -1;
+    //     } else {
+    //         return 1;
+    //     }
+    //     return 0;
+    // });
 
-    let restaurantsWithCapacities = {};
+    let restaurantMap = {};
     for (const restaurant of restaurants) {
-        restaurantsWithCapacities[restaurant.name] = restaurant.numOrders;
+        restaurantMap[restaurant.name] = restaurant;
     }
 
     let newClientRestaurantMatches = [];
-    let unassignableClientIds = {};
+    let unassignableClientRows = {};
     const sortedClients = sortedZipCodeCuisineGroups.flatMap(group => group.clients);
 
     for (const client of sortedClients) {
         let bestScore = Number.POSITIVE_INFINITY;
         let bestRestaurant = null;
         for (const restaurant of restaurants) {
-            const score = getScore(client, restaurant, restaurantsWithCapacities);
+            const score = getScore(client, restaurant, restaurantMap);
             if (score < bestScore) {
                 bestScore = score;
                 bestRestaurant = restaurant;
@@ -103,16 +118,40 @@ if (dayOfWeekInput in DAY_OF_WEEK_RESTAURANT_MAP) {
 
         if (bestRestaurant === null) {
             const assignedCuisine = client.cuisine;
-            if (!(assignedCuisine in unassignableClientIds)) {
-                unassignableClientIds[assignedCuisine] = [];
+            if (!(assignedCuisine in unassignableClientRows)) {
+                unassignableClientRows[assignedCuisine] = [];
             }
 
-            unassignableClientIds[assignedCuisine].push(client.id);
+            let newFieldsObj = {};
+            for (const field of unassignableClientsTable.fields) {
+                let updateValue = client.originalRow.getCellValue(field.name);
+                if (field.type == 'singleSelect') {
+                    if (updateValue) {
+                        delete updateValue.id; // Remove the original reference for multiselect updates to work
+                    }
+                } else if (field.type == 'multipleSelects') {
+                    if (updateValue) {
+                        updateValue = updateValue.map(v => {
+                            if (v) {
+                                delete v.id;
+                            }
+                            return v;
+                        });
+                    }
+                }
+
+                newFieldsObj[field.name] = updateValue;
+            }
+
+            unassignableClientRows[assignedCuisine].push({
+                fields: newFieldsObj
+            });
+
             continue;
         }
 
         const bestRestaurantName = bestRestaurant.name;
-        restaurantsWithCapacities[bestRestaurant.name]--;
+        restaurantMap[bestRestaurant.name].numOrders--;
         newClientRestaurantMatches.push({
             fields: {
                 'Great Plates ID': client.id,
@@ -132,20 +171,35 @@ if (dayOfWeekInput in DAY_OF_WEEK_RESTAURANT_MAP) {
 
     // Now upload the matches to the Latest Assignments table
 
-    // First clear the table
+    // First clear the assignments table
     await clearTable(assignmentsTable);
-
     // A maximum of 50 record creations are allowed at one time, so do it in batches
     while (newClientRestaurantMatches.length > 0) {
         await assignmentsTable.createRecordsAsync(newClientRestaurantMatches.slice(0, 50));
         newClientRestaurantMatches = newClientRestaurantMatches.slice(50);
     }
 
-    for (const cuisine in unassignableClientIds) {
-        output.text(`Couldn't assign ${unassignableClientIds[cuisine].length} clients who wanted ${cuisine}`);
-        for (const clientId of unassignableClientIds[cuisine]) {
-            output.text(clientId);
+    // Clear the unassignable clients table
+    await clearTable(unassignableClientsTable);
+
+    for (const cuisine in unassignableClientRows) {
+        output.text(`Couldn't assign ${unassignableClientRows[cuisine].length} clients who wanted ${cuisine}`);
+    }
+
+    for (const restaurantName in restaurantMap) {
+        const restaurant = restaurantMap[restaurantName];
+        if (restaurant.numOrders === 0) {
+            continue;
         }
+
+        output.text(`${restaurantName} has ${restaurant.numOrders} ${restaurant.cuisine} meals left`);
+    }
+
+    let unassignableRecords = Object.values(unassignableClientRows).flatMap(v => v);
+    // A maximum of 50 record creations are allowed at one time, so do it in batches
+    while (unassignableRecords.length > 0) {
+        await unassignableClientsTable.createRecordsAsync(unassignableRecords.slice(0, 50));
+        unassignableRecords = unassignableRecords.slice(50);
     }
 
 } else {
@@ -160,12 +214,16 @@ async function clearTable(table) {
     }
 }
 
-function getScore(client, restaurant, restaurantsWithCapacities) {
-    if (restaurantsWithCapacities[restaurant.name] <= 0) {
+function noPreference(cuisine) {
+    return cuisine == 'No Preference' || cuisine == 'No Preference Special Diet';
+}
+
+function getScore(client, restaurant, restaurantMap) {
+    if (restaurantMap[restaurant.name].numOrders <= 0) {
         return Number.POSITIVE_INFINITY;
     }
 
-    if (restaurant.cuisine !== client.cuisine) {
+    if (!cuisinesMatch(restaurant.cuisine, client.cuisine)) {
         return Number.POSITIVE_INFINITY;
     }
 
@@ -174,9 +232,9 @@ function getScore(client, restaurant, restaurantsWithCapacities) {
 
 function cuisinesMatch(restaurantCuisine, clientCuisine) {
     if (clientCuisine === 'No Preference') {
-        return restaurantCuisine === 'American';
+        return restaurantCuisine === 'American' || restaurantCuisine === 'Chinese';
     } else if (clientCuisine == 'No Preference Special Diet') {
-        return restaurantCuisine === 'American Special Diet';
+        return restaurantCuisine === 'American Special Diet' || restaurantCuisine === 'Chinese Special Diet';
     }
 
     return restaurantCuisine === clientCuisine;

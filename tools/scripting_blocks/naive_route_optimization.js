@@ -1,4 +1,4 @@
-const MAX_ORDERS_PER_DRIVER = 10;
+const MAX_ORDERS_PER_ROUTE = 10;
 
 const clientsTable = base.getTable('SF New Deal Clients');
 const assignmentsTable = base.getTable('Latest Assignments');
@@ -32,15 +32,25 @@ for (const record of (await assignmentsTable.selectRecordsAsync()).records) {
         'Great Plates ID': record.getCellValue('Great Plates ID'),
         'Client Latitude': record.getCellValue('Client Latitude'),
         'Client Longitude': record.getCellValue('Client Longitude'),
-        'Client Street Address': record.getCellValue('Client Street Address')
+        'Client Street Address': record.getCellValue('Client Street Address'),
+        'Client Zip Code': record.getCellValue('Client Zip Code')
     });
 }
 
-// For each restaurant we go through and create routes
+// For each restaurant we go through and create routes that group by zip code
 let newRecords = [];
 for (const restaurantName in restaurantsToClients) {
     const clients = restaurantsToClients[restaurantName];
-    const numRoutes = Math.ceil(clients.length / MAX_ORDERS_PER_DRIVER);
+    const numRoutes = Math.ceil(clients.length / MAX_ORDERS_PER_ROUTE);
+    const clientsSortedByZipCode = Array.prototype.slice.call(clients).sort((a, b) => {
+        if (a['Client Zip Code'] < b['Client Zip Code']) {
+            return -1;
+        } else if (a['Client Zip Code'] > b['Client Zip Code']) {
+            return 1;
+        }
+
+        return 0;
+    });
 
     // Sequence Number = 0 refers to the restaurant
     for (let i = 0; i < numRoutes; i++) {
@@ -58,11 +68,12 @@ for (const restaurantName in restaurantsToClients) {
         });
     }
 
-    // Naive implementation, just go through and assign the meals in order.
-    for (let i = 0; i < clients.length; i++) {
-        const routeNumber = i % numRoutes;
-        const sequenceNumber = Math.floor(i / numRoutes) + 1;
-        const client = {...clients[i], ...clientMap[clients[i]['Great Plates ID']]} ;
+    // Naive implementation, go through the clients sorted by zip code and assign to a route
+    for (let i = 0; i < clientsSortedByZipCode.length; i++) {
+        const currentClient = clientsSortedByZipCode[i];
+        const routeNumber = Math.floor(i / MAX_ORDERS_PER_ROUTE);
+        const sequenceNumber = (i % MAX_ORDERS_PER_ROUTE) + 1;
+        const client = {...currentClient, ...clientMap[currentClient['Great Plates ID']]} ;
         newRecords.push({
             fields: {
                 'Restaurant Name': restaurantName,
